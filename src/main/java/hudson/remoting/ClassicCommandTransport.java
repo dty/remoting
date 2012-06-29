@@ -57,7 +57,7 @@ import java.io.OutputStream;
             if(!last)
                 oos.reset();
         } catch (IOException e) {
-            dumpDiagnostics();
+            dumpDiagnostics(e);
             throw e;
         }
     }
@@ -70,7 +70,7 @@ import java.io.OutputStream;
         try {
             return Command.readFrom(channel,ois);
         } catch (IOException e) {
-            dumpDiagnostics();
+            dumpDiagnostics(e);
             throw e;
         }
     }
@@ -84,14 +84,13 @@ import java.io.OutputStream;
         return underlyingOutputStream;
     }
 
-    void dumpDiagnostics() {
+    void dumpDiagnostics(Exception cause) {
         if (this.underlyingInputStream instanceof CapturingInputStream) {
-            System.err.println("Captured input stream: ");
-            ((CapturingInputStream)this.underlyingInputStream).dump();
+            ((CapturingInputStream)this.underlyingInputStream).captureRest();
+            ((CapturingInputStream)this.underlyingInputStream).dump(cause);
         }
         if (this.underlyingOutputStream instanceof CapturingOutputStream) {
-            System.err.println("Captured output stream: ");
-            ((CapturingOutputStream)this.underlyingOutputStream).dump();
+            ((CapturingOutputStream)this.underlyingOutputStream).dump(cause);
         }
     }
 
@@ -111,6 +110,9 @@ import java.io.OutputStream;
         ObjectOutputStream oos = null;
         if(mode!= Mode.NEGOTIATE) {
             os.write(mode.preamble);
+            if (ClassicCommandTransport.CAPTURE_OUTPUT > 0) {
+                os = new CapturingOutputStream(os, ClassicCommandTransport.CAPTURE_OUTPUT);
+            }
             oos = new ObjectOutputStream(mode.wrap(os));
             oos.flush();    // make sure that stream preamble is sent to the other end. avoids dead-lock
         }

@@ -23,8 +23,10 @@
  */
 package hudson.remoting;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -64,25 +66,48 @@ public class CapturingOutputStream extends OutputStream {
 
     @Override
     public void write(byte[] b) throws IOException {
-        capture.add(Arrays.copyOf(b, b.length));
+        if (b.length > 0) {
+            capture.add(Arrays.copyOf(b, b.length));
+        }
         underlyingStream.write(b);
     }
     
     @Override
     public void write(int b) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(4);
-        buf.putInt(b);
-        capture.add(buf.array());
+        byte[] buf = new byte[1];
+        buf[0] = (byte)(b & 0x000000ff);
+        capture.add(buf);
         underlyingStream.write(b);
     }
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        capture.add(Arrays.copyOfRange(b, off, off + len));
+        if (len > 0) {
+            capture.add(copyOfRange(b, off, off + len));
+        }
         underlyingStream.write(b, off, len);
     }
 
-    public void dump() {
-        new ByteArrayRingBufferDumper().dump(capture);
+    public void dump(Exception cause) {
+        try {
+            File dump = File.createTempFile("hudsonRemotingOutputCapture-", ".txt", new File("/tmp"));
+            PrintStream stream = new PrintStream(dump);
+
+            Exception e = new Exception("Dump from", cause);
+            e.fillInStackTrace();
+            e.printStackTrace(stream);
+            new ByteArrayRingBufferDumper().dump(capture, stream);
+        } catch (IOException e) {
+        }
+    }
+
+    static byte[] copyOfRange(byte[] original, int from, int to) {
+        int newLength = to - from;
+        if (newLength < 0) {
+            throw new IllegalArgumentException(from + " > " + to);
+        }
+        byte[] copy = new byte[newLength];
+        System.arraycopy(original, from, copy, 0, Math.min(original.length - from, newLength));
+        return copy;
     }
 }

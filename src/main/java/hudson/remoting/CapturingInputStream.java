@@ -23,8 +23,10 @@
  */
 package hudson.remoting;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.util.Arrays;
 
 
@@ -72,42 +74,65 @@ public class CapturingInputStream extends InputStream {
 
     @Override
     public int read(byte[] b) throws IOException {
-        capture(0, b.length);
-        return underlyingStream.read(b);
+        int numRead = underlyingStream.read(b);
+        if (numRead > 0) {
+            capture(b, 0, numRead);
+        }
+        return numRead;
     }
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
-        capture(off, len);
-        return underlyingStream.read(b, off, len);
+        int numRead = underlyingStream.read(b, off, len);
+        if (numRead > 0) {
+            capture(b, off, numRead);
+        }
+
+        return numRead;
     }
 
     @Override
     public int read() throws IOException {
-        capture(0, -1);
-        return underlyingStream.read();
+        int data = underlyingStream.read();
+        if (data > 0) {
+            byte[] buf = new byte[1];
+            buf[0] = (byte) data;
+
+            capture(buf, 0, 1);
+        }
+        return data;
     }
 
-    public void dump() {
-        new ByteArrayRingBufferDumper().dump(capture);
+    void captureRest() {
+        try {
+            byte[] marker = { (byte)0xde, (byte)0xad, (byte)0xbe, (byte)0xef };
+            capture(marker, 0, 4);
+
+            int rest = available();
+            if (rest > 0) {
+                byte[] buf = new byte[rest];
+                read(buf);
+            }
+        } catch (IOException e) {
+            
+        }
+    }
+
+    public void dump(Exception cause) {
+        try {
+            File dump = File.createTempFile("hudsonRemotingInputCapture-", ".txt", new File("/tmp"));
+            PrintStream stream = new PrintStream(dump);
+
+            Exception e = new Exception("Dump from", cause);
+            e.fillInStackTrace();
+            e.printStackTrace(stream);
+
+            new ByteArrayRingBufferDumper().dump(capture, stream);
+        } catch (IOException e) {
+        }
     }
     
-    private void capture(int off, int len) throws IOException {
-        if (underlyingStream.markSupported()) {
-            byte[] b;
-
-            if (len == -1) {
-                len = underlyingStream.available();
-            }
-            b = new byte[off+len];
-            
-            try {
-                underlyingStream.mark(len+1);
-                underlyingStream.read(b, off, len);
-                capture.add(off==0? b : Arrays.copyOfRange(b, off, off + len));
-            } finally {
-                underlyingStream.reset();
-            }
-        }
+    private void capture(byte[] buf, int off, int len) throws IOException {
+        capture.add(CapturingOutputStream.copyOfRange(buf, off, off + len));
     }
 }
