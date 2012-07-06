@@ -287,9 +287,12 @@ final class RemoteClassLoader extends URLClassLoader {
                 tmpFile.mkdir();
                 return tmpFile;
             } catch (IOException e) {
-                if (nRetry++ < 100)
+                if (nRetry++ < 100){
                     continue;
-                throw e;
+                }
+                IOException nioe = new IOException("failed to create temp directory at default location, most probably at: "+System.getProperty("java.io.tmpdir"));
+                nioe.initCause(e);
+                throw nioe;
             }
         }
     }
